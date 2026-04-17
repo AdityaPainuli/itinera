@@ -26,6 +26,9 @@ export interface Activity {
   duration_minutes: number;
   cost_inr: number;
   location: string;
+  neighborhood?: string;
+  lat?: number;
+  lng?: number;
   tips?: string;
   source_urls: string[];
 }
@@ -41,11 +44,13 @@ export interface MealSuggestion {
 export interface DayPlan {
   day_number: number;
   theme: string;
+  base_area?: string;
   morning: Activity[];
   afternoon: Activity[];
   evening: Activity[];
   meals: MealSuggestion[];
   daily_cost_estimate_inr: number;
+  route_notes?: string;
 }
 
 export interface Accommodation {
@@ -66,6 +71,9 @@ export interface CostBreakdown {
   total_inr: number;
   fits_budget: boolean;
   notes?: string;
+  computed_total_inr?: number;
+  computed_activities_inr?: number;
+  computed_food_inr?: number;
 }
 
 export interface Itinerary {
@@ -82,6 +90,7 @@ export interface Itinerary {
   local_tips: string[];
   cautions: string[];
   sources: string[];
+  quality_checks: string[];
   created_at?: string;
 }
 

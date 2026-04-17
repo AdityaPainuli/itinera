@@ -7,6 +7,10 @@ function formatINR(n: number): string {
 }
 
 function ActivityCard({ a }: { a: Activity }) {
+  const mapHref =
+    a.lat != null && a.lng != null
+      ? `https://www.google.com/maps/search/?api=1&query=${a.lat},${a.lng}`
+      : null;
   return (
     <div className="border-l-2 border-saffron-500 pl-3 py-1">
       <div className="flex items-baseline justify-between gap-3">
@@ -15,7 +19,23 @@ function ActivityCard({ a }: { a: Activity }) {
           {a.duration_minutes} min · {formatINR(a.cost_inr)}
         </div>
       </div>
-      <div className="text-sm text-ink-600">{a.location}</div>
+      <div className="text-sm text-ink-600">
+        {a.location}
+        {a.neighborhood && <span className="text-ink-500"> · {a.neighborhood}</span>}
+        {mapHref && (
+          <>
+            {" · "}
+            <a
+              href={mapHref}
+              target="_blank"
+              rel="noreferrer"
+              className="text-saffron-700 underline"
+            >
+              map
+            </a>
+          </>
+        )}
+      </div>
       <div className="text-sm text-ink-700 mt-1">{a.description}</div>
       {a.tips && <div className="text-xs italic text-ink-500 mt-1">Tip: {a.tips}</div>}
     </div>
@@ -86,7 +106,7 @@ export function ItineraryDisplay({ itinerary: it, onExportMarkdown, onExportJson
         <div className="space-y-4">
           {it.days.map((d) => (
             <div key={d.day_number} className="bg-white border border-ink-200 rounded-xl p-5">
-              <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
+              <div className="flex items-baseline justify-between mb-1 flex-wrap gap-2">
                 <h3 className="font-serif text-xl text-ink-900">
                   Day {d.day_number} — {d.theme}
                 </h3>
@@ -94,6 +114,13 @@ export function ItineraryDisplay({ itinerary: it, onExportMarkdown, onExportJson
                   ~{formatINR(d.daily_cost_estimate_inr)}
                 </span>
               </div>
+              {(d.base_area || d.route_notes) && (
+                <div className="text-xs text-ink-500 mb-3">
+                  {d.base_area && <span className="font-medium text-ink-600">📍 {d.base_area}</span>}
+                  {d.base_area && d.route_notes && <span> · </span>}
+                  {d.route_notes && <span>{d.route_notes}</span>}
+                </div>
+              )}
               {(["morning", "afternoon", "evening"] as const).map((bucket) => {
                 const items = d[bucket];
                 if (!items || items.length === 0) return null;
@@ -184,8 +211,32 @@ export function ItineraryDisplay({ itinerary: it, onExportMarkdown, onExportJson
         <div className={`mt-3 text-sm ${cb.fits_budget ? "text-green-700" : "text-amber-700"}`}>
           {cb.fits_budget ? "✓ Fits your budget" : "⚠ Exceeds your stated budget"}
         </div>
+        {cb.computed_total_inr != null && cb.computed_total_inr !== cb.total_inr && (
+          <div className="mt-2 text-xs text-ink-500">
+            Verified sum from per-item costs:{" "}
+            <span className="font-medium text-ink-700">
+              {formatINR(cb.computed_total_inr)}
+            </span>{" "}
+            (model reported {formatINR(cb.total_inr)})
+          </div>
+        )}
         {cb.notes && <div className="mt-2 text-sm text-ink-600 italic">{cb.notes}</div>}
       </section>
+
+      {it.quality_checks && it.quality_checks.length > 0 && (
+        <section className="bg-ink-100 rounded-xl p-4">
+          <details>
+            <summary className="cursor-pointer text-sm font-medium text-ink-700">
+              Quality checks ({it.quality_checks.length})
+            </summary>
+            <ul className="mt-2 text-xs text-ink-600 space-y-1 list-disc pl-5">
+              {it.quality_checks.map((c, i) => (
+                <li key={i}>{c}</li>
+              ))}
+            </ul>
+          </details>
+        </section>
+      )}
 
       <div className="grid md:grid-cols-2 gap-4">
         {it.packing_list.length > 0 && (

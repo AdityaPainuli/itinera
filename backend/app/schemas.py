@@ -42,6 +42,12 @@ class Activity(BaseModel):
     duration_minutes: int
     cost_inr: int
     location: str
+    neighborhood: Optional[str] = Field(
+        default=None,
+        description="Cluster label so nearby stops can be grouped, e.g. 'Fort Kochi', 'Old City'",
+    )
+    lat: Optional[float] = None
+    lng: Optional[float] = None
     tips: Optional[str] = None
     source_urls: list[str] = Field(default_factory=list)
 
@@ -57,11 +63,19 @@ class MealSuggestion(BaseModel):
 class DayPlan(BaseModel):
     day_number: int
     theme: str
+    base_area: Optional[str] = Field(
+        default=None,
+        description="The neighborhood/area the day is anchored around, for route coherence",
+    )
     morning: list[Activity] = Field(default_factory=list)
     afternoon: list[Activity] = Field(default_factory=list)
     evening: list[Activity] = Field(default_factory=list)
     meals: list[MealSuggestion] = Field(default_factory=list)
     daily_cost_estimate_inr: int
+    route_notes: Optional[str] = Field(
+        default=None,
+        description="One-line explanation of the geographic flow, e.g. 'All stops within 2km in Fort Kochi'",
+    )
 
 
 class Accommodation(BaseModel):
@@ -82,6 +96,11 @@ class CostBreakdown(BaseModel):
     total_inr: int
     fits_budget: bool
     notes: Optional[str] = None
+    # Filled in deterministically by the backend after generation — lets the UI
+    # surface "Claude said X, we summed Y" when the model's arithmetic drifts.
+    computed_total_inr: Optional[int] = None
+    computed_activities_inr: Optional[int] = None
+    computed_food_inr: Optional[int] = None
 
 
 class Itinerary(BaseModel):
@@ -98,6 +117,8 @@ class Itinerary(BaseModel):
     local_tips: list[str]
     cautions: list[str] = Field(default_factory=list)
     sources: list[str] = Field(default_factory=list)
+    # Output of the post-generation critique pass — issues found and (ideally) repaired.
+    quality_checks: list[str] = Field(default_factory=list)
     created_at: Optional[datetime] = None
 
 

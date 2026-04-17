@@ -121,15 +121,23 @@ def _to_markdown(it: Itinerary, created_at: datetime | None = None) -> str:
     lines.append("## Day-by-day\n")
     for day in it.days:
         lines.append(f"### Day {day.day_number} — {day.theme}")
-        lines.append(f"*Estimated cost: ₹{day.daily_cost_estimate_inr:,}*\n")
+        header_bits = [f"*Estimated cost: ₹{day.daily_cost_estimate_inr:,}*"]
+        if day.base_area:
+            header_bits.append(f"*Area: {day.base_area}*")
+        if day.route_notes:
+            header_bits.append(f"*{day.route_notes}*")
+        lines.append(" · ".join(header_bits) + "\n")
         for bucket_name, bucket in (("Morning", day.morning), ("Afternoon", day.afternoon), ("Evening", day.evening)):
             if not bucket:
                 continue
             lines.append(f"**{bucket_name}**")
             for act in bucket:
+                loc = act.location
+                if act.neighborhood:
+                    loc = f"{loc} ({act.neighborhood})"
                 lines.append(
                     f"- **{act.name}** ({act.duration_minutes} min, ₹{act.cost_inr:,}) — "
-                    f"{act.location}. {act.description}"
+                    f"{loc}. {act.description}"
                 )
                 if act.tips:
                     lines.append(f"  *Tip: {act.tips}*")
@@ -158,8 +166,18 @@ def _to_markdown(it: Itinerary, created_at: datetime | None = None) -> str:
     lines.append(f"| Miscellaneous | ₹{cb.miscellaneous_inr:,} |")
     lines.append(f"| **Total** | **₹{cb.total_inr:,}** |")
     lines.append(f"\n{'✓ Fits budget' if cb.fits_budget else '⚠ Exceeds budget'}")
+    if cb.computed_total_inr is not None and cb.computed_total_inr != cb.total_inr:
+        lines.append(
+            f"\n> Verified sum from per-item costs: ₹{cb.computed_total_inr:,} "
+            f"(model reported ₹{cb.total_inr:,})"
+        )
     if cb.notes:
         lines.append(f"\n> {cb.notes}")
+
+    if it.quality_checks:
+        lines.append("\n## Quality checks\n")
+        for c in it.quality_checks:
+            lines.append(f"- {c}")
 
     if it.packing_list:
         lines.append("\n## Packing list\n")
