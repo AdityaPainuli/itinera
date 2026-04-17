@@ -90,7 +90,7 @@ export interface Itinerary {
   local_tips: string[];
   cautions: string[];
   sources: string[];
-  quality_checks: string[];
+  quality_checks?: string[];
   created_at?: string;
 }
 

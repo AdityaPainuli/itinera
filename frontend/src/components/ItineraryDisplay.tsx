@@ -6,11 +6,21 @@ function formatINR(n: number): string {
   return `₹${n.toLocaleString("en-IN")}`;
 }
 
+function buildMapHref(lat?: number, lng?: number): string | null {
+  if (
+    typeof lat !== "number" ||
+    typeof lng !== "number" ||
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng)
+  ) {
+    return null;
+  }
+  const params = new URLSearchParams({ api: "1", query: `${lat},${lng}` });
+  return `https://www.google.com/maps/search/?${params.toString()}`;
+}
+
 function ActivityCard({ a }: { a: Activity }) {
-  const mapHref =
-    a.lat != null && a.lng != null
-      ? `https://www.google.com/maps/search/?api=1&query=${a.lat},${a.lng}`
-      : null;
+  const mapHref = buildMapHref(a.lat, a.lng);
   return (
     <div className="border-l-2 border-saffron-500 pl-3 py-1">
       <div className="flex items-baseline justify-between gap-3">
@@ -28,7 +38,7 @@ function ActivityCard({ a }: { a: Activity }) {
             <a
               href={mapHref}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="text-saffron-700 underline"
             >
               map

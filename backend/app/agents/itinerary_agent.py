@@ -25,7 +25,12 @@ from typing import Any
 from anthropic import AsyncAnthropic
 
 from app.agents.critique import critique
-from app.agents.prompts import SYSTEM_PROMPT, build_repair_message, build_user_message
+from app.agents.prompts import (
+    REPAIR_SYSTEM_PROMPT,
+    SYSTEM_PROMPT,
+    build_repair_message,
+    build_user_message,
+)
 from app.config import settings
 from app.schemas import Itinerary, ItineraryRequest
 
@@ -131,11 +136,15 @@ class ItineraryAgent:
     ) -> Itinerary:
         """Second Claude call, no tools — cheap, focused, just fix the issues."""
         draft_payload = draft.model_dump(mode="json")
-        # Strip computed_* — those are our bookkeeping, not the model's.
+        # Strip fields the model doesn't need to see or edit:
+        #   - computed_* are our post-hoc bookkeeping
+        #   - quality_checks is what *we* produce from the critique pass
+        #   - request is backend-owned (reattached after parsing), and absent from _SCHEMA_HINT
         cb = draft_payload.get("cost_breakdown", {})
         for k in ("computed_total_inr", "computed_activities_inr", "computed_food_inr"):
             cb.pop(k, None)
         draft_payload.pop("quality_checks", None)
+        draft_payload.pop("request", None)
 
         user_msg = build_repair_message(
             draft_json=json.dumps(draft_payload, indent=2, ensure_ascii=False),
@@ -146,7 +155,7 @@ class ItineraryAgent:
         response = await self.client.messages.create(
             model=settings.anthropic_model,
             max_tokens=settings.max_tokens,
-            system=SYSTEM_PROMPT,
+            system=REPAIR_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_msg}],
         )
 

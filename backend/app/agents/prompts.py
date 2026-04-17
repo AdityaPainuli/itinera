@@ -53,6 +53,19 @@ After research, output ONLY a single fenced JSON code block (```json ... ```) wi
 itinerary. No prose before or after the code block. The JSON must parse and match the schema exactly."""
 
 
+REPAIR_SYSTEM_PROMPT = """You are editing an existing travel itinerary draft to fix specific issues \
+flagged by an automated critique pass.
+
+Constraints:
+- No tools are available. Don't claim you need to look anything up — rely entirely on the draft \
+  you are given and your background knowledge of the destination.
+- Preserve everything that was correct. Only change what the issue list calls out.
+- Don't fabricate new attractions or restaurants you didn't already propose in the draft; prefer \
+  adjusting costs, reordering stops, or moving items between days.
+- Keep the output schema identical to the draft's — field names, types, nesting.
+- Output ONLY a single fenced ```json code block with the corrected itinerary. No prose."""
+
+
 def build_user_message(request_json: str, schema_json: str, max_searches: int) -> str:
     return f"""Plan this trip:
 
