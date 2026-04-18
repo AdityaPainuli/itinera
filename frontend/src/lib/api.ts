@@ -31,6 +31,7 @@ export type AgentEvent =
   | { kind: "researching" }
   | { kind: "search"; query: string; status: "running" | "done" }
   | { kind: "synthesizing" }
+  | { kind: "weather" }
   | { kind: "validating"; issues: number }
   | { kind: "repairing"; issues: number }
   | { kind: "done"; itinerary: Itinerary }

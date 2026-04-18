@@ -14,6 +14,7 @@ interface Props {
 const STAGES = [
   { key: "researching", label: "Researching the destination" },
   { key: "synthesizing", label: "Writing the day-by-day plan" },
+  { key: "weather", label: "Checking the weather forecast" },
   { key: "validating", label: "Verifying budget & route" },
   { key: "repairing", label: "Fixing flagged issues" },
   { key: "done", label: "Saving" },
@@ -24,9 +25,10 @@ type StageKey = (typeof STAGES)[number]["key"];
 const STAGE_ORDER: Record<StageKey, number> = {
   researching: 0,
   synthesizing: 1,
-  validating: 2,
-  repairing: 3,
-  done: 4,
+  weather: 2,
+  validating: 3,
+  repairing: 4,
+  done: 5,
 };
 
 export function ProgressPanel({ events, startedAt }: Props) {

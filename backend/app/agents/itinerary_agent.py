@@ -31,6 +31,7 @@ from app.agents.prompts import (
     build_repair_message,
     build_user_message,
 )
+from app.agents.weather import enrich_with_weather
 from app.config import settings
 from app.schemas import Itinerary, ItineraryRequest
 
@@ -117,6 +118,7 @@ class ItineraryAgent:
           - {"kind": "researching"}
           - {"kind": "search", "query": "...", "status": "running"|"done"}
           - {"kind": "synthesizing"}
+          - {"kind": "weather"}
           - {"kind": "validating", "issues": N}
           - {"kind": "repairing", "issues": N}
           - {"kind": "done", "itinerary": Itinerary}
@@ -133,7 +135,13 @@ class ItineraryAgent:
                     yield ev
             assert draft is not None, "_draft_stream must emit exactly one draft event"
 
-            issues = critique(draft, request)
+            # Weather enrichment: attaches forecasts and surfaces
+            # bad-weather-vs-outdoor-activity conflicts as critique issues.
+            # No-op when the request has no start_date.
+            yield {"kind": "weather"}
+            weather_issues = await enrich_with_weather(draft, request)
+
+            issues = critique(draft, request) + weather_issues
             yield {"kind": "validating", "issues": len(issues)}
 
             if not issues:
@@ -145,7 +153,10 @@ class ItineraryAgent:
             yield {"kind": "repairing", "issues": len(issues)}
             try:
                 repaired = await self._repair(request, draft, issues)
-                residual = critique(repaired, request)
+                # Re-enrich weather in case the repair shuffled days or moved
+                # activities to a different area.
+                weather_residual = await enrich_with_weather(repaired, request)
+                residual = critique(repaired, request) + weather_residual
                 repaired.quality_checks = _summarize_checks(issues, residual)
                 yield {"kind": "done", "itinerary": repaired}
             except (ValueError, json.JSONDecodeError) as exc:

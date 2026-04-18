@@ -183,6 +183,24 @@ export function ItineraryDisplay({ itinerary: it, onExportMarkdown, onExportJson
                   {d.route_notes && <span>{d.route_notes}</span>}
                 </div>
               )}
+              {d.weather && (
+                <div
+                  className={`text-xs mb-3 p-2 rounded-lg border ${
+                    d.weather.is_outdoor_friendly
+                      ? "bg-sky-50 border-sky-100 text-sky-900"
+                      : "bg-amber-50 border-amber-200 text-amber-900"
+                  }`}
+                >
+                  <span className="font-medium">{d.weather.condition}</span>{" "}
+                  · {Math.round(d.weather.temp_c_low)}–{Math.round(d.weather.temp_c_high)}°C
+                  {d.weather.precipitation_mm > 0 && (
+                    <> · {d.weather.precipitation_mm.toFixed(0)}mm rain</>
+                  )}
+                  {!d.weather.is_outdoor_friendly && (
+                    <span className="ml-2">— outdoor stops may be uncomfortable</span>
+                  )}
+                </div>
+              )}
               <DayMap day={d} />
               {(["morning", "afternoon", "evening"] as const).map((bucket) => {
                 const items = d[bucket];
