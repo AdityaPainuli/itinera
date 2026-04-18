@@ -117,6 +117,7 @@ class ItineraryAgent:
         Events are dicts with a `kind` key. Shapes:
           - {"kind": "researching"}
           - {"kind": "search", "query": "...", "status": "running"|"done"}
+          - {"kind": "reasoning", "delta": "..."} — partial prose tokens
           - {"kind": "synthesizing"}
           - {"kind": "weather"}
           - {"kind": "validating", "issues": N}
@@ -185,6 +186,27 @@ class ItineraryAgent:
         search_announced = False
         synthesizing_announced = False
 
+        # Per text-block state: we stream Claude's prose to the UI as
+        # `reasoning` deltas, but suppress the giant final JSON block so the
+        # SSE stream doesn't flood with 8k tokens of structured output.
+        text_blocks: dict[int, dict[str, Any]] = {}
+
+        def handle_text_delta(idx: int, delta_text: str) -> str | None:
+            """Return the portion of `delta_text` that should be streamed to the UI,
+            or None if the block has transitioned into the JSON fence."""
+            state = text_blocks.setdefault(idx, {"buffer": "", "suppressed": False})
+            if state["suppressed"]:
+                return None
+            buffer_before = state["buffer"]
+            state["buffer"] = buffer_before + delta_text
+            fence_pos = state["buffer"].find("```json")
+            if fence_pos == -1:
+                return delta_text
+            # Crossed the fence in this delta — emit the pre-fence slice, then mute.
+            state["suppressed"] = True
+            cut = fence_pos - len(buffer_before)
+            return delta_text[:cut] if cut > 0 else None
+
         async with self.client.messages.stream(
             model=settings.anthropic_model,
             max_tokens=settings.max_tokens,
@@ -216,6 +238,12 @@ class ItineraryAgent:
                         pending_tool_input[event.index].append(
                             getattr(delta, "partial_json", "") or ""
                         )
+                    elif dtype == "text_delta":
+                        chunk = handle_text_delta(
+                            event.index, getattr(delta, "text", "") or ""
+                        )
+                        if chunk:
+                            yield {"kind": "reasoning", "delta": chunk}
                 elif etype == "content_block_stop":
                     if event.index in pending_tool_input:
                         raw = "".join(pending_tool_input.pop(event.index))

@@ -30,6 +30,7 @@ export async function generateItinerary(req: ItineraryRequest): Promise<Itinerar
 export type AgentEvent =
   | { kind: "researching" }
   | { kind: "search"; query: string; status: "running" | "done" }
+  | { kind: "reasoning"; delta: string }
   | { kind: "synthesizing" }
   | { kind: "weather" }
   | { kind: "validating"; issues: number }

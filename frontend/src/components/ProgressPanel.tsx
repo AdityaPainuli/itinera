@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AgentEvent } from "@/lib/api";
 
 interface Props {
@@ -44,6 +44,24 @@ export function ProgressPanel({ events, startedAt }: Props) {
   const validating = events.find((e): e is Extract<AgentEvent, { kind: "validating" }> => e.kind === "validating");
   const repairing = events.find((e): e is Extract<AgentEvent, { kind: "repairing" }> => e.kind === "repairing");
   const isDone = events.some((e) => e.kind === "done");
+
+  // Concatenate all reasoning deltas into the running transcript.
+  const reasoning = useMemo(
+    () =>
+      events
+        .filter((e): e is Extract<AgentEvent, { kind: "reasoning" }> => e.kind === "reasoning")
+        .map((e) => e.delta)
+        .join(""),
+    [events],
+  );
+
+  // Auto-scroll the reasoning box to the bottom on new deltas.
+  const reasoningRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (reasoningRef.current) {
+      reasoningRef.current.scrollTop = reasoningRef.current.scrollHeight;
+    }
+  }, [reasoning]);
 
   // The highest stage we've seen. Any later stage implies earlier stages completed.
   const currentStage: StageKey = events.reduce<StageKey>((acc, ev) => {
@@ -119,6 +137,20 @@ export function ProgressPanel({ events, startedAt }: Props) {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {reasoning.trim().length > 0 && (
+        <div className="mt-5 pt-4 border-t border-ink-100">
+          <div className="text-xs uppercase tracking-wide text-ink-500 mb-2">
+            Claude&apos;s reasoning
+          </div>
+          <div
+            ref={reasoningRef}
+            className="max-h-40 overflow-y-auto bg-ink-50 rounded-lg p-3 text-xs text-ink-600 whitespace-pre-wrap font-mono leading-relaxed"
+          >
+            {reasoning}
+          </div>
         </div>
       )}
 
