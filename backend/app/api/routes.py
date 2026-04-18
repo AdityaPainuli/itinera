@@ -1,10 +1,12 @@
 """HTTP routes."""
 from __future__ import annotations
 
+import json
 from datetime import datetime
+from typing import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +28,59 @@ async def generate_itinerary(
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    await _persist(itinerary, request, session)
+    return itinerary
+
+
+@router.post("/itinerary/generate/stream")
+async def generate_itinerary_stream(
+    request: ItineraryRequest,
+    session: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
+    """Server-Sent Events stream of agent progress.
+
+    Each event is encoded as a single SSE `data:` line carrying a JSON object.
+    The final event has `kind: "done"` with the full itinerary (including id
+    and created_at after persistence); errors arrive as `kind: "error"`.
+    """
+    return StreamingResponse(
+        _sse(_agent_events(request, session)),
+        media_type="text/event-stream",
+        headers={
+            # Disable proxy buffering so events reach the browser promptly.
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+async def _agent_events(
+    request: ItineraryRequest, session: AsyncSession
+) -> AsyncIterator[dict]:
+    """Forward agent events to the client, and on `done` persist + re-emit with id."""
+    async for event in _agent.generate_stream(request):
+        kind = event.get("kind")
+        if kind == "done":
+            itinerary = event["itinerary"]
+            try:
+                await _persist(itinerary, request, session)
+            except Exception as exc:  # noqa: BLE001
+                yield {"kind": "error", "message": f"failed to save: {exc}"}
+                return
+            yield {"kind": "done", "itinerary": itinerary.model_dump(mode="json")}
+        else:
+            yield event
+
+
+async def _sse(events: AsyncIterator[dict]) -> AsyncIterator[bytes]:
+    async for event in events:
+        yield f"data: {json.dumps(event, default=str)}\n\n".encode("utf-8")
+
+
+async def _persist(
+    itinerary: Itinerary, request: ItineraryRequest, session: AsyncSession
+) -> None:
     row = ItineraryRow(
         destination=request.destination,
         duration_days=request.duration_days,
@@ -35,10 +90,8 @@ async def generate_itinerary(
     session.add(row)
     await session.commit()
     await session.refresh(row)
-
     itinerary.id = row.id
     itinerary.created_at = row.created_at
-    return itinerary
 
 
 @router.get("/itinerary", response_model=list[ItineraryListItem])

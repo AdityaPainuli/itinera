@@ -4,12 +4,14 @@ import { useCallback, useEffect, useState } from "react";
 import { HistoryList } from "@/components/HistoryList";
 import { ItineraryDisplay } from "@/components/ItineraryDisplay";
 import { ItineraryForm } from "@/components/ItineraryForm";
+import { ProgressPanel } from "@/components/ProgressPanel";
 import {
   deleteItinerary,
-  generateItinerary,
+  generateItineraryStream,
   getItinerary,
   getItineraryMarkdown,
   listItineraries,
+  type AgentEvent,
 } from "@/lib/api";
 import type { Itinerary, ItineraryListItem, ItineraryRequest } from "@/lib/types";
 
@@ -18,6 +20,8 @@ export default function Home() {
   const [current, setCurrent] = useState<Itinerary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [events, setEvents] = useState<AgentEvent[]>([]);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
 
   const refreshHistory = useCallback(async () => {
     try {
@@ -35,14 +39,19 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setCurrent(null);
+    setEvents([]);
+    setStartedAt(Date.now());
     try {
-      const result = await generateItinerary(req);
+      const result = await generateItineraryStream(req, (ev) =>
+        setEvents((prev) => [...prev, ev]),
+      );
       setCurrent(result);
       await refreshHistory();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to generate itinerary");
     } finally {
       setLoading(false);
+      setStartedAt(null);
     }
   };
 
@@ -98,7 +107,9 @@ export default function Home() {
             </div>
           )}
 
-          {current ? (
+          {loading && startedAt ? (
+            <ProgressPanel events={events} startedAt={startedAt} />
+          ) : current ? (
             <ItineraryDisplay
               itinerary={current}
               onExportMarkdown={handleExportMarkdown}

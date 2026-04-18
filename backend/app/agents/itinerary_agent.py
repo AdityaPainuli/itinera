@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any
+from typing import Any, AsyncIterator
 
 from anthropic import AsyncAnthropic
 
@@ -33,6 +33,12 @@ from app.agents.prompts import (
 )
 from app.config import settings
 from app.schemas import Itinerary, ItineraryRequest
+
+# Discrete event kinds the UI reacts to. Keep in sync with the frontend
+# ProgressPanel — and remember: these are the whole public contract between
+# the agent stream and the client, so don't rename without a coordinated change.
+EventKind = str  # "researching" | "search" | "synthesizing" | "validating" |
+#                 "repairing" | "done" | "error"
 
 log = logging.getLogger(__name__)
 
@@ -81,35 +87,88 @@ class ItineraryAgent:
         self.client = client or AsyncAnthropic(api_key=settings.anthropic_api_key)
 
     async def generate(self, request: ItineraryRequest) -> Itinerary:
-        draft = await self._draft(request)
+        """Non-streaming entrypoint — drains the stream and returns the final itinerary.
 
-        issues = critique(draft, request)
+        Preserved so the JSON route and any non-SSE caller still work.
+        """
+        final: Itinerary | None = None
+        async for event in self.generate_stream(request):
+            kind = event.get("kind")
+            if kind == "done":
+                final = event["itinerary"]
+            elif kind == "error":
+                raise ValueError(event.get("message", "agent failed"))
+        if final is None:
+            raise ValueError("agent stream ended without producing an itinerary")
+        return final
 
-        if issues:
+    async def generate_stream(
+        self, request: ItineraryRequest
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Run the full pipeline, yielding stage events as each phase progresses.
+
+        Events are dicts with a `kind` key. Shapes:
+          - {"kind": "researching"}
+          - {"kind": "search", "query": "...", "status": "running"|"done"}
+          - {"kind": "synthesizing"}
+          - {"kind": "validating", "issues": N}
+          - {"kind": "repairing", "issues": N}
+          - {"kind": "done", "itinerary": Itinerary}
+          - {"kind": "error", "message": "..."}
+        """
+        try:
+            yield {"kind": "researching"}
+
+            draft: Itinerary | None = None
+            async for ev in self._draft_stream(request):
+                if ev.get("kind") == "draft":
+                    draft = ev["itinerary"]
+                else:
+                    yield ev
+            assert draft is not None, "_draft_stream must emit exactly one draft event"
+
+            issues = critique(draft, request)
+            yield {"kind": "validating", "issues": len(issues)}
+
+            if not issues:
+                draft.quality_checks = ["All automated checks passed."]
+                yield {"kind": "done", "itinerary": draft}
+                return
+
             log.info("Draft critique found %d issue(s); running repair pass.", len(issues))
+            yield {"kind": "repairing", "issues": len(issues)}
             try:
                 repaired = await self._repair(request, draft, issues)
                 residual = critique(repaired, request)
                 repaired.quality_checks = _summarize_checks(issues, residual)
-                return repaired
+                yield {"kind": "done", "itinerary": repaired}
             except (ValueError, json.JSONDecodeError) as exc:
-                # Repair failed — ship the draft with the original issues annotated
-                # rather than 500-ing the user. The UI surfaces the list.
                 log.warning("Repair pass failed: %s. Falling back to draft.", exc)
                 draft.quality_checks = _summarize_checks(issues, issues)
-                return draft
+                yield {"kind": "done", "itinerary": draft}
+        except Exception as exc:  # noqa: BLE001 — SSE boundary, anything becomes a client event
+            log.exception("Agent stream failed")
+            yield {"kind": "error", "message": str(exc) or exc.__class__.__name__}
 
-        draft.quality_checks = ["All automated checks passed."]
-        return draft
-
-    async def _draft(self, request: ItineraryRequest) -> Itinerary:
+    async def _draft_stream(
+        self, request: ItineraryRequest
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Stream the draft call. Yields `search`/`synthesizing` progress events
+        and, at the end, a single `draft` event carrying the parsed `Itinerary`.
+        """
         user_msg = build_user_message(
             request_json=request.model_dump_json(indent=2),
             schema_json=_SCHEMA_HINT,
             max_searches=settings.max_web_searches,
         )
 
-        response = await self.client.messages.create(
+        # Accumulate input_json deltas per content-block index so we can emit
+        # the search `query` once the tool-use block closes.
+        pending_tool_input: dict[int, list[str]] = {}
+        search_announced = False
+        synthesizing_announced = False
+
+        async with self.client.messages.stream(
             model=settings.anthropic_model,
             max_tokens=settings.max_tokens,
             system=SYSTEM_PROMPT,
@@ -121,12 +180,43 @@ class ItineraryAgent:
                 }
             ],
             messages=[{"role": "user", "content": user_msg}],
-        )
+        ) as stream:
+            async for event in stream:
+                etype = getattr(event, "type", None)
+                if etype == "content_block_start":
+                    block = getattr(event, "content_block", None)
+                    btype = getattr(block, "type", None)
+                    if btype == "server_tool_use" and getattr(block, "name", "") == "web_search":
+                        pending_tool_input[event.index] = []
+                        if not search_announced:
+                            # First search starting — signal the UI so it can
+                            # transition out of the generic "researching" state.
+                            search_announced = True
+                elif etype == "content_block_delta":
+                    delta = getattr(event, "delta", None)
+                    dtype = getattr(delta, "type", None)
+                    if dtype == "input_json_delta" and event.index in pending_tool_input:
+                        pending_tool_input[event.index].append(
+                            getattr(delta, "partial_json", "") or ""
+                        )
+                elif etype == "content_block_stop":
+                    if event.index in pending_tool_input:
+                        raw = "".join(pending_tool_input.pop(event.index))
+                        query = _safe_json_get(raw, "query")
+                        if query:
+                            yield {"kind": "search", "query": query, "status": "done"}
+                elif etype == "text":
+                    # First text event after tool use means synthesis has started.
+                    if not synthesizing_announced:
+                        synthesizing_announced = True
+                        yield {"kind": "synthesizing"}
 
-        text = _extract_text(response.content)
+            final_message = await stream.get_final_message()
+
+        text = _extract_text(final_message.content)
         data = _parse_itinerary_json(text)
         data["request"] = request.model_dump(mode="json")
-        return Itinerary.model_validate(data)
+        yield {"kind": "draft", "itinerary": Itinerary.model_validate(data)}
 
     async def _repair(
         self,
@@ -194,3 +284,21 @@ def _parse_itinerary_json(text: str) -> dict[str, Any]:
     except json.JSONDecodeError as exc:
         log.error("Failed to parse itinerary JSON. Raw text:\n%s", text)
         raise ValueError(f"Agent did not return valid JSON: {exc}") from exc
+
+
+def _safe_json_get(raw: str, key: str) -> str | None:
+    """Parse a potentially-partial JSON string and return `key` if present.
+
+    The streaming API delivers tool input as successive `input_json_delta`
+    chunks. The final concatenation should be valid JSON, but we stay
+    defensive — if it isn't, we just drop the field rather than crashing
+    the whole stream.
+    """
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if isinstance(parsed, dict):
+        val = parsed.get(key)
+        return val if isinstance(val, str) else None
+    return None
