@@ -58,17 +58,23 @@ _SCHEMA_HINT = """{
       "morning": [ {"name": "...", "description": "...", "duration_minutes": 120,
                     "cost_inr": 500, "location": "full address or landmark",
                     "neighborhood": "Fort Kochi", "lat": 9.9658, "lng": 76.2421,
-                    "tips": "...", "source_urls": ["..."]} ],
+                    "tips": "...", "source_urls": ["..."],
+                    "opening_hours": "Mon-Sun 9am-6pm, closed Tue",
+                    "contact": {"phone": "+91 ...", "website": "https://...",
+                                "booking_url": "https://...", "google_maps_url": "https://maps.app.goo.gl/..."}} ],
       "afternoon": [ ...same shape... ],
       "evening": [ ...same shape... ],
-      "meals": [ {"meal": "lunch", "place": "...", "cuisine": "...", "cost_inr": 400, "notes": "..."} ],
+      "meals": [ {"meal": "lunch", "place": "...", "cuisine": "...", "cost_inr": 400, "notes": "...",
+                  "location": "...", "lat": 9.9658, "lng": 76.2421,
+                  "contact": {"phone": "+91 ...", "website": "https://..."}} ],
       "daily_cost_estimate_inr": 0,
       "route_notes": "one-line note on the day's geography, e.g. 'All stops within 3km in Fort Kochi'"
     }
   ],
   "accommodation_suggestions": [
     {"name": "...", "area": "...", "type": "hotel|homestay|hostel|resort|guesthouse|airbnb",
-     "price_per_night_inr": 0, "rating": 4.3, "why": "..."}
+     "price_per_night_inr": 0, "rating": 4.3, "why": "...", "lat": 0, "lng": 0,
+     "contact": {"phone": "+91 ...", "website": "https://...", "booking_url": "https://..."}}
   ],
   "cost_breakdown": {
     "accommodation_inr": 0, "food_inr": 0, "activities_inr": 0,

@@ -1,6 +1,10 @@
 "use client";
 
-import type { Activity, Itinerary } from "@/lib/types";
+import dynamic from "next/dynamic";
+import type { Activity, ContactInfo, Itinerary } from "@/lib/types";
+
+// Leaflet touches window on import, so SSR would blow up. Disable it.
+const DayMap = dynamic(() => import("./DayMap"), { ssr: false });
 
 function formatINR(n: number): string {
   return `₹${n.toLocaleString("en-IN")}`;
@@ -19,8 +23,50 @@ function buildMapHref(lat?: number, lng?: number): string | null {
   return `https://www.google.com/maps/search/?${params.toString()}`;
 }
 
+function ContactRow({ contact }: { contact?: ContactInfo }) {
+  if (!contact) return null;
+  const parts: React.ReactNode[] = [];
+  if (contact.phone) {
+    parts.push(
+      <a key="phone" href={`tel:${contact.phone}`} className="text-saffron-700 underline">
+        📞 {contact.phone}
+      </a>,
+    );
+  }
+  if (contact.website) {
+    parts.push(
+      <a
+        key="site"
+        href={contact.website}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-saffron-700 underline"
+      >
+        🌐 website
+      </a>,
+    );
+  }
+  if (contact.booking_url) {
+    parts.push(
+      <a
+        key="book"
+        href={contact.booking_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-saffron-700 underline"
+      >
+        🎟 book
+      </a>,
+    );
+  }
+  if (parts.length === 0) return null;
+  return (
+    <div className="text-xs mt-1 flex flex-wrap gap-x-3 gap-y-1">{parts}</div>
+  );
+}
+
 function ActivityCard({ a }: { a: Activity }) {
-  const mapHref = buildMapHref(a.lat, a.lng);
+  const mapHref = a.contact?.google_maps_url ?? buildMapHref(a.lat, a.lng);
   return (
     <div className="border-l-2 border-saffron-500 pl-3 py-1">
       <div className="flex items-baseline justify-between gap-3">
@@ -47,6 +93,12 @@ function ActivityCard({ a }: { a: Activity }) {
         )}
       </div>
       <div className="text-sm text-ink-700 mt-1">{a.description}</div>
+      {a.opening_hours && (
+        <div className="text-xs text-ink-600 mt-1">
+          <span className="font-medium">Hours:</span> {a.opening_hours}
+        </div>
+      )}
+      <ContactRow contact={a.contact} />
       {a.tips && <div className="text-xs italic text-ink-500 mt-1">Tip: {a.tips}</div>}
     </div>
   );
@@ -131,6 +183,7 @@ export function ItineraryDisplay({ itinerary: it, onExportMarkdown, onExportJson
                   {d.route_notes && <span>{d.route_notes}</span>}
                 </div>
               )}
+              <DayMap day={d} />
               {(["morning", "afternoon", "evening"] as const).map((bucket) => {
                 const items = d[bucket];
                 if (!items || items.length === 0) return null;
@@ -150,15 +203,34 @@ export function ItineraryDisplay({ itinerary: it, onExportMarkdown, onExportJson
               {d.meals.length > 0 && (
                 <div>
                   <div className="text-xs uppercase tracking-wide text-ink-500 mb-2">Meals</div>
-                  <ul className="text-sm text-ink-700 space-y-1">
-                    {d.meals.map((m, i) => (
-                      <li key={i}>
-                        <span className="capitalize text-ink-500">{m.meal}:</span>{" "}
-                        <span className="font-medium">{m.place}</span> · {m.cuisine} ·{" "}
-                        {formatINR(m.cost_inr)}
-                        {m.notes && <span className="text-ink-500"> — {m.notes}</span>}
-                      </li>
-                    ))}
+                  <ul className="text-sm text-ink-700 space-y-2">
+                    {d.meals.map((m, i) => {
+                      const mealMap = m.contact?.google_maps_url ?? buildMapHref(m.lat, m.lng);
+                      return (
+                        <li key={i}>
+                          <div>
+                            <span className="capitalize text-ink-500">{m.meal}:</span>{" "}
+                            <span className="font-medium">{m.place}</span> · {m.cuisine} ·{" "}
+                            {formatINR(m.cost_inr)}
+                            {mealMap && (
+                              <>
+                                {" · "}
+                                <a
+                                  href={mealMap}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-saffron-700 underline text-xs"
+                                >
+                                  map
+                                </a>
+                              </>
+                            )}
+                          </div>
+                          {m.notes && <div className="text-xs text-ink-500">{m.notes}</div>}
+                          <ContactRow contact={m.contact} />
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
@@ -170,21 +242,38 @@ export function ItineraryDisplay({ itinerary: it, onExportMarkdown, onExportJson
       <section>
         <h2 className="font-serif text-2xl text-ink-900 mb-3">Where to stay</h2>
         <div className="grid md:grid-cols-2 gap-3">
-          {it.accommodation_suggestions.map((a, i) => (
-            <div key={i} className="bg-white border border-ink-200 rounded-xl p-4">
-              <div className="flex items-baseline justify-between">
-                <div className="font-medium text-ink-900">{a.name}</div>
-                <div className="text-sm text-ink-500">
-                  {formatINR(a.price_per_night_inr)}/night
+          {it.accommodation_suggestions.map((a, i) => {
+            const hotelMap = a.contact?.google_maps_url ?? buildMapHref(a.lat, a.lng);
+            return (
+              <div key={i} className="bg-white border border-ink-200 rounded-xl p-4">
+                <div className="flex items-baseline justify-between">
+                  <div className="font-medium text-ink-900">{a.name}</div>
+                  <div className="text-sm text-ink-500">
+                    {formatINR(a.price_per_night_inr)}/night
+                  </div>
                 </div>
+                <div className="text-sm text-ink-500">
+                  {a.type} · {a.area}
+                  {a.rating && <> · ⭐ {a.rating}</>}
+                  {hotelMap && (
+                    <>
+                      {" · "}
+                      <a
+                        href={hotelMap}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-saffron-700 underline"
+                      >
+                        map
+                      </a>
+                    </>
+                  )}
+                </div>
+                <div className="text-sm text-ink-700 mt-2">{a.why}</div>
+                <ContactRow contact={a.contact} />
               </div>
-              <div className="text-sm text-ink-500">
-                {a.type} · {a.area}
-                {a.rating && <> · ⭐ {a.rating}</>}
-              </div>
-              <div className="text-sm text-ink-700 mt-2">{a.why}</div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 

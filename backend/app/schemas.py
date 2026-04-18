@@ -36,6 +36,20 @@ class ItineraryRequest(BaseModel):
     start_date: Optional[date] = None
 
 
+class ContactInfo(BaseModel):
+    """Contact/booking details a traveler can act on.
+
+    All fields are optional — only populated when actually found during research.
+    """
+    phone: Optional[str] = None
+    website: Optional[str] = None
+    booking_url: Optional[str] = Field(
+        default=None,
+        description="Ticket/reservation URL if different from the main website",
+    )
+    google_maps_url: Optional[str] = None
+
+
 class Activity(BaseModel):
     name: str
     description: str
@@ -50,6 +64,11 @@ class Activity(BaseModel):
     lng: Optional[float] = None
     tips: Optional[str] = None
     source_urls: list[str] = Field(default_factory=list)
+    contact: Optional[ContactInfo] = None
+    opening_hours: Optional[str] = Field(
+        default=None,
+        description="Human-readable hours, e.g. 'Mon-Sun 9am-6pm, closed Tue'",
+    )
 
 
 class MealSuggestion(BaseModel):
@@ -58,6 +77,23 @@ class MealSuggestion(BaseModel):
     cuisine: str
     cost_inr: int
     notes: Optional[str] = None
+    location: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    contact: Optional[ContactInfo] = None
+
+
+class WeatherForecast(BaseModel):
+    """Forecast for a single day. Backend-populated via Open-Meteo when
+    the request has a start_date; absent otherwise."""
+    date: date
+    condition: str = Field(
+        description="Short label, e.g. 'Light rain', 'Sunny', 'Heavy thunderstorm'"
+    )
+    temp_c_high: float
+    temp_c_low: float
+    precipitation_mm: float
+    is_outdoor_friendly: bool = True
 
 
 class DayPlan(BaseModel):
@@ -76,6 +112,7 @@ class DayPlan(BaseModel):
         default=None,
         description="One-line explanation of the geographic flow, e.g. 'All stops within 2km in Fort Kochi'",
     )
+    weather: Optional[WeatherForecast] = None
 
 
 class Accommodation(BaseModel):
@@ -85,6 +122,9 @@ class Accommodation(BaseModel):
     price_per_night_inr: int
     rating: Optional[float] = None
     why: str
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    contact: Optional[ContactInfo] = None
 
 
 class CostBreakdown(BaseModel):

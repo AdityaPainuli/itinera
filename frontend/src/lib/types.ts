@@ -20,6 +20,13 @@ export interface ItineraryRequest {
   start_date?: string;
 }
 
+export interface ContactInfo {
+  phone?: string;
+  website?: string;
+  booking_url?: string;
+  google_maps_url?: string;
+}
+
 export interface Activity {
   name: string;
   description: string;
@@ -31,6 +38,8 @@ export interface Activity {
   lng?: number;
   tips?: string;
   source_urls: string[];
+  contact?: ContactInfo;
+  opening_hours?: string;
 }
 
 export interface MealSuggestion {
@@ -39,6 +48,19 @@ export interface MealSuggestion {
   cuisine: string;
   cost_inr: number;
   notes?: string;
+  location?: string;
+  lat?: number;
+  lng?: number;
+  contact?: ContactInfo;
+}
+
+export interface WeatherForecast {
+  date: string;
+  condition: string;
+  temp_c_high: number;
+  temp_c_low: number;
+  precipitation_mm: number;
+  is_outdoor_friendly: boolean;
 }
 
 export interface DayPlan {
@@ -51,6 +73,7 @@ export interface DayPlan {
   meals: MealSuggestion[];
   daily_cost_estimate_inr: number;
   route_notes?: string;
+  weather?: WeatherForecast;
 }
 
 export interface Accommodation {
@@ -60,6 +83,9 @@ export interface Accommodation {
   price_per_night_inr: number;
   rating?: number;
   why: string;
+  lat?: number;
+  lng?: number;
+  contact?: ContactInfo;
 }
 
 export interface CostBreakdown {

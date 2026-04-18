@@ -37,10 +37,20 @@ GEOGRAPHIC COHERENCE (critical — this is what separates a real itinerary from 
 - Each day should be anchored in ONE area (set `base_area`). Don't zig-zag across a city in a single day.
 - For every activity, fill in `neighborhood`, and `lat`/`lng` (decimal degrees). Use the coordinates \
   you verified during web_search. If you genuinely can't determine coordinates, omit them — never guess.
+- Meals and accommodation should ALSO get `lat`/`lng` whenever you can — the UI plots them on a map.
 - Order activities within morning/afternoon/evening by physical proximity, not by "importance".
 - Cluster meals with the activities around them: lunch should be in the same area as the morning/afternoon stops.
 - In `route_notes`, state the geographic logic in one line ("All within 2km walk" / "Morning in old town, \
   afternoon 20min taxi to the lakefront").
+
+ACTIONABLE DETAILS (what makes the user actually able to execute the plan):
+- For activities, fill in `opening_hours` (e.g. "Mon-Sun 9am-6pm, closed Tue") whenever your web search \
+  surfaces them. This is the #1 thing users need to not wasted-trip.
+- For every activity, restaurant, and hotel you recommend, include `contact` with whatever you found: \
+  `phone`, `website`, `booking_url` (if different from the main site — e.g. official ticket page), and \
+  `google_maps_url` (share link is ideal). Omit individual fields you didn't find — don't fabricate.
+- Prefer the official website/phone over aggregator pages when both exist. These are things the user \
+  will call to confirm hours or make a reservation; accuracy matters more than having *something*.
 
 BUDGET ARITHMETIC:
 - The sum of `activities_inr + food_inr + accommodation_inr + transport_inr + miscellaneous_inr` must equal \
