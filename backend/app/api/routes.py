@@ -1,10 +1,12 @@
 """HTTP routes."""
 from __future__ import annotations
 
+import json
 from datetime import datetime
+from typing import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +28,59 @@ async def generate_itinerary(
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    await _persist(itinerary, request, session)
+    return itinerary
+
+
+@router.post("/itinerary/generate/stream")
+async def generate_itinerary_stream(
+    request: ItineraryRequest,
+    session: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
+    """Server-Sent Events stream of agent progress.
+
+    Each event is encoded as a single SSE `data:` line carrying a JSON object.
+    The final event has `kind: "done"` with the full itinerary (including id
+    and created_at after persistence); errors arrive as `kind: "error"`.
+    """
+    return StreamingResponse(
+        _sse(_agent_events(request, session)),
+        media_type="text/event-stream",
+        headers={
+            # Disable proxy buffering so events reach the browser promptly.
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+async def _agent_events(
+    request: ItineraryRequest, session: AsyncSession
+) -> AsyncIterator[dict]:
+    """Forward agent events to the client, and on `done` persist + re-emit with id."""
+    async for event in _agent.generate_stream(request):
+        kind = event.get("kind")
+        if kind == "done":
+            itinerary = event["itinerary"]
+            try:
+                await _persist(itinerary, request, session)
+            except Exception as exc:  # noqa: BLE001
+                yield {"kind": "error", "message": f"failed to save: {exc}"}
+                return
+            yield {"kind": "done", "itinerary": itinerary.model_dump(mode="json")}
+        else:
+            yield event
+
+
+async def _sse(events: AsyncIterator[dict]) -> AsyncIterator[bytes]:
+    async for event in events:
+        yield f"data: {json.dumps(event, default=str)}\n\n".encode("utf-8")
+
+
+async def _persist(
+    itinerary: Itinerary, request: ItineraryRequest, session: AsyncSession
+) -> None:
     row = ItineraryRow(
         destination=request.destination,
         duration_days=request.duration_days,
@@ -35,10 +90,8 @@ async def generate_itinerary(
     session.add(row)
     await session.commit()
     await session.refresh(row)
-
     itinerary.id = row.id
     itinerary.created_at = row.created_at
-    return itinerary
 
 
 @router.get("/itinerary", response_model=list[ItineraryListItem])
@@ -121,15 +174,23 @@ def _to_markdown(it: Itinerary, created_at: datetime | None = None) -> str:
     lines.append("## Day-by-day\n")
     for day in it.days:
         lines.append(f"### Day {day.day_number} — {day.theme}")
-        lines.append(f"*Estimated cost: ₹{day.daily_cost_estimate_inr:,}*\n")
+        header_bits = [f"*Estimated cost: ₹{day.daily_cost_estimate_inr:,}*"]
+        if day.base_area:
+            header_bits.append(f"*Area: {day.base_area}*")
+        if day.route_notes:
+            header_bits.append(f"*{day.route_notes}*")
+        lines.append(" · ".join(header_bits) + "\n")
         for bucket_name, bucket in (("Morning", day.morning), ("Afternoon", day.afternoon), ("Evening", day.evening)):
             if not bucket:
                 continue
             lines.append(f"**{bucket_name}**")
             for act in bucket:
+                loc = act.location
+                if act.neighborhood:
+                    loc = f"{loc} ({act.neighborhood})"
                 lines.append(
                     f"- **{act.name}** ({act.duration_minutes} min, ₹{act.cost_inr:,}) — "
-                    f"{act.location}. {act.description}"
+                    f"{loc}. {act.description}"
                 )
                 if act.tips:
                     lines.append(f"  *Tip: {act.tips}*")
@@ -158,8 +219,18 @@ def _to_markdown(it: Itinerary, created_at: datetime | None = None) -> str:
     lines.append(f"| Miscellaneous | ₹{cb.miscellaneous_inr:,} |")
     lines.append(f"| **Total** | **₹{cb.total_inr:,}** |")
     lines.append(f"\n{'✓ Fits budget' if cb.fits_budget else '⚠ Exceeds budget'}")
+    if cb.computed_total_inr is not None and cb.computed_total_inr != cb.total_inr:
+        lines.append(
+            f"\n> Verified sum from per-item costs: ₹{cb.computed_total_inr:,} "
+            f"(model reported ₹{cb.total_inr:,})"
+        )
     if cb.notes:
         lines.append(f"\n> {cb.notes}")
+
+    if it.quality_checks:
+        lines.append("\n## Quality checks\n")
+        for c in it.quality_checks:
+            lines.append(f"- {c}")
 
     if it.packing_list:
         lines.append("\n## Packing list\n")
