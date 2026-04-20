@@ -39,8 +39,9 @@ def _today_start_utc(now: datetime) -> datetime:
 
 
 async def check_and_consume(session: AsyncSession, limit: int) -> QuotaResult:
-    """Atomically check the quota and consume one slot if available.
+    """Check the quota and consume one slot if available.
 
+    Best-effort, not strictly atomic — see the module docstring on concurrency.
     Returns a QuotaResult describing the outcome. The caller is responsible
     for raising 429 when `allowed=False` and firing the notification when
     `should_notify=True` (we keep IO out of the DB transaction).

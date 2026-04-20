@@ -57,7 +57,9 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             if v.startswith("postgres://"):
                 return "postgresql+asyncpg://" + v[len("postgres://") :]
-            if v.startswith("postgresql://") and "+asyncpg" not in v.split("://", 1)[0]:
+            # `postgresql://` only — `postgresql+asyncpg://` already has a different
+            # prefix so it's excluded by startswith.
+            if v.startswith("postgresql://"):
                 return "postgresql+asyncpg://" + v[len("postgresql://") :]
         return v
 

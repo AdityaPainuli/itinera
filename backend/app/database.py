@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from typing import Optional
-from urllib.parse import parse_qs, urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import JSON, DateTime, Integer, String
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -67,7 +67,9 @@ def _build_engine_kwargs(url: str) -> tuple[str, dict]:
     query = parse_qs(parts.query, keep_blank_values=True)
     sslmode = query.pop("sslmode", [None])[0]
 
-    new_query = "&".join(f"{k}={v[0]}" for k, v in query.items() if v)
+    # urlencode(..., doseq=True) preserves multi-valued params and re-encodes
+    # any percent-encoded characters that parse_qs decoded.
+    new_query = urlencode(query, doseq=True)
     cleaned = urlunsplit((parts.scheme, parts.netloc, parts.path, new_query, parts.fragment))
 
     connect_args: dict = {}
@@ -84,6 +86,22 @@ SessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSe
 async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    # Seed the singleton rate-limit row at startup. Without this, two requests
+    # arriving before any row exists would each try to INSERT id=1 and one
+    # would fail with IntegrityError. Idempotent — checks before inserting.
+    async with SessionLocal() as session:
+        existing = await session.get(RateLimitRow, 1)
+        if existing is None:
+            now = datetime.utcnow()
+            session.add(
+                RateLimitRow(
+                    id=1,
+                    count=0,
+                    period_start=datetime(now.year, now.month, now.day),
+                    notified_at=None,
+                )
+            )
+            await session.commit()
 
 
 async def get_session() -> AsyncSession:  # type: ignore[misc]
