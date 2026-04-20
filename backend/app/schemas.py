@@ -27,7 +27,7 @@ class ItineraryRequest(BaseModel):
     destination: str = Field(..., description="Primary destination, e.g. 'Udaipur' or 'Kerala'")
     duration_days: int = Field(..., ge=1, le=30)
     budget_inr: int = Field(..., ge=0, description="Total budget in INR for the whole trip")
-    travelers: int = Field(default=2, ge=1, le=20)
+    travelers: int = Field(default=2, ge=1, le=100)
     travel_styles: list[TravelStyle] = Field(default_factory=list)
     special_instructions: Optional[str] = Field(
         default=None,
@@ -118,7 +118,7 @@ class DayPlan(BaseModel):
 class Accommodation(BaseModel):
     name: str
     area: str
-    type: Literal["hotel", "homestay", "hostel", "resort", "guesthouse", "airbnb"]
+    type: Literal["hotel", "homestay", "hostel", "resort", "guesthouse", "airbnb", "houseboat"]
     price_per_night_inr: int
     rating: Optional[float] = None
     why: str

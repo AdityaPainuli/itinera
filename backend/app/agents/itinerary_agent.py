@@ -73,7 +73,7 @@ _SCHEMA_HINT = """{
     }
   ],
   "accommodation_suggestions": [
-    {"name": "...", "area": "...", "type": "hotel|homestay|hostel|resort|guesthouse|airbnb",
+    {"name": "...", "area": "...", "type": "hotel|homestay|hostel|resort|guesthouse|airbnb|houseboat",
      "price_per_night_inr": 0, "rating": 4.3, "why": "...", "lat": 0, "lng": 0,
      "contact": {"phone": "+91 ...", "website": "https://...", "booking_url": "https://..."}}
   ],
