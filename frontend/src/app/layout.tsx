@@ -36,8 +36,8 @@ export default function RootLayout({
           </header>
           <main className="flex-1">{children}</main>
           <footer className="border-t border-ink-200 py-6 text-center text-xs text-ink-400">
-            Built with Care · Always verify critical bookings and prices before
-            travel.
+            Build by Aditya for Kashish · Always verify critical bookings and
+            prices before travel.
           </footer>
         </div>
       </body>

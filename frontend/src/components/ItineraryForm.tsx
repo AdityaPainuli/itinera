@@ -133,7 +133,7 @@ export function ItineraryForm({ onSubmit, loading }: Props) {
           <input
             type="number"
             min={1}
-            max={20}
+            max={100}
             value={travelers}
             onChange={(e) => setTravelers(Number(e.target.value))}
             className="w-full px-3 py-2 border border-ink-200 rounded-lg bg-white focus:outline-none focus:border-saffron-500"

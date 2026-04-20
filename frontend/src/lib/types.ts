@@ -79,7 +79,7 @@ export interface DayPlan {
 export interface Accommodation {
   name: string;
   area: string;
-  type: "hotel" | "homestay" | "hostel" | "resort" | "guesthouse" | "airbnb";
+  type: "hotel" | "homestay" | "hostel" | "resort" | "guesthouse" | "airbnb" | "houseboat";
   price_per_night_inr: number;
   rating?: number;
   why: string;
