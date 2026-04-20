@@ -11,11 +11,41 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents import ItineraryAgent
+from app.config import settings
 from app.database import ItineraryRow, get_session
+from app.notifier import notify_limit_reached
+from app.rate_limit import QuotaResult, check_and_consume
 from app.schemas import Itinerary, ItineraryListItem, ItineraryRequest
 
 router = APIRouter(prefix="/api")
 _agent = ItineraryAgent()
+
+
+async def _enforce_quota(session: AsyncSession) -> QuotaResult:
+    """Consume one quota slot or raise 429.
+
+    The slot is consumed *before* generation starts — so a failed generation
+    still costs one of the day's requests. That's a deliberate trade-off:
+    counting only successes opens the door to a malicious caller burning
+    Anthropic credit by triggering repeated failures.
+    """
+    if settings.daily_request_limit <= 0:
+        # Rate limiting disabled.
+        return QuotaResult(allowed=True, count=0, limit=0, reset_at=datetime.utcnow(), should_notify=False)
+
+    result = await check_and_consume(session, settings.daily_request_limit)
+    if not result.allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Daily request limit reached ({result.count}/{result.limit}). "
+                f"Resets at {result.reset_at:%Y-%m-%d %H:%M UTC}."
+            ),
+            headers={"Retry-After": str(result.retry_after_seconds)},
+        )
+    if result.should_notify:
+        notify_limit_reached(result.count, result.limit, result.reset_at)
+    return result
 
 
 @router.post("/itinerary/generate", response_model=Itinerary)
@@ -23,6 +53,7 @@ async def generate_itinerary(
     request: ItineraryRequest,
     session: AsyncSession = Depends(get_session),
 ) -> Itinerary:
+    await _enforce_quota(session)
     try:
         itinerary = await _agent.generate(request)
     except ValueError as exc:
@@ -43,6 +74,9 @@ async def generate_itinerary_stream(
     The final event has `kind: "done"` with the full itinerary (including id
     and created_at after persistence); errors arrive as `kind: "error"`.
     """
+    # Enforce the quota *before* opening the SSE stream so the client sees
+    # a clean 429 with Retry-After, not a stream that errors mid-flight.
+    await _enforce_quota(session)
     return StreamingResponse(
         _sse(_agent_events(request, session)),
         media_type="text/event-stream",
